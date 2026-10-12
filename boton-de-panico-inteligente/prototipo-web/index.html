@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Botón de Pánico Inteligente</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: consola de despacho — botón a la izquierda, ficha del incidente a la derecha; una columna en teléfono */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --sunk:#e3e8ee; --fg:#17202b; --muted:#5a6778; --line:#cfd6df;
+  --alert:#d42a2f; --alert-deep:#a81c22; --alert-soft:#fbe4e4;
+  --med:#1d7a4f; --med-soft:#dcf1e6; --fire:#c25412; --fire-soft:#fbe7d8; --pol:#1f4fa8; --pol-soft:#dde7f8;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#10151c; --surface:#18202a; --sunk:#0c1117; --fg:#e7ecf2; --muted:#93a1b3; --line:#2b3644;
+  --alert:#ef4a4f; --alert-deep:#c7323a; --alert-soft:#3a1a1d;
+  --med:#4cc58b; --med-soft:#163024; --fire:#f08a45; --fire-soft:#3a2416; --pol:#7aa6f2; --pol-soft:#1a2740; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10151c; --surface:#18202a; --sunk:#0c1117; --fg:#e7ecf2; --muted:#93a1b3; --line:#2b3644;
+  --alert:#ef4a4f; --alert-deep:#c7323a; --alert-soft:#3a1a1d;
+  --med:#4cc58b; --med-soft:#163024; --fire:#f08a45; --fire-soft:#3a2416; --pol:#7aa6f2; --pol-soft:#1a2740; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.55 var(--body);padding:24px 16px 48px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:20px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:8px 20px}
+h1{font:800 clamp(1.6rem,4vw,2.3rem)/1.05 var(--display);letter-spacing:-.01em;margin:0;text-wrap:balance}
+.tag{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.demo{font:500 12px/1.3 var(--body);background:var(--sunk);border:1px solid var(--line);padding:6px 10px;border-radius:6px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px;display:grid;gap:16px;min-width:0}
+label,.lbl{font:600 12px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+textarea,input{width:100%;font:15px/1.45 var(--body);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+textarea{min-height:84px;resize:vertical}
+textarea:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--pol);outline-offset:2px}
+.field{display:grid;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:500 13px/1.2 var(--body);background:var(--sunk);color:var(--fg);border:1px solid var(--line);border-radius:999px;padding:6px 11px;cursor:pointer}
+.chip:hover{border-color:var(--muted)}
+.coords{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.coords input{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* Botón */
+.btn-zone{display:grid;justify-items:center;gap:10px;padding:8px 0 4px}
+.panic{position:relative;width:200px;height:200px;max-width:100%;border-radius:50%;border:0;cursor:pointer;
+  background:radial-gradient(circle at 50% 38%,var(--alert) 0%,var(--alert-deep) 78%);color:#fff;
+  box-shadow:0 0 0 10px var(--alert-soft),0 10px 24px -8px var(--alert-deep);touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .12s}
+.panic:active,.panic.holding{transform:scale(.97)}
+.panic span{display:block;font:800 2rem/1 var(--display);letter-spacing:.04em}
+.panic small{display:block;font:500 12px/1.3 var(--body);opacity:.9;margin-top:6px}
+.ring{position:absolute;inset:-10px;width:calc(100% + 20px);height:calc(100% + 20px);transform:rotate(-90deg);pointer-events:none}
+.ring circle{fill:none;stroke:var(--fg);stroke-width:5;stroke-dasharray:666;stroke-dashoffset:666;stroke-linecap:round}
+.hint{font-size:13px;color:var(--muted);text-align:center}
+.ghost{font:600 14px/1 var(--body);background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:10px 14px;cursor:pointer}
+.ghost:hover{border-color:var(--muted)}
+.ghost[disabled]{opacity:.5;cursor:default}
+
+/* Ficha */
+.status{display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between}
+.state{font:700 13px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;padding:7px 10px;border-radius:6px;background:var(--sunk);color:var(--muted)}
+.state.live{background:var(--alert);color:#fff}
+.state.done{background:var(--med-soft);color:var(--med)}
+.clock{font:500 22px/1 var(--mono);font-variant-numeric:tabular-nums}
+.case{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:start;border-left:6px solid var(--svc,var(--line));padding-left:14px}
+.case h2{font:800 1.5rem/1.1 var(--display);margin:0 0 4px;text-wrap:balance}
+.case p{margin:0;color:var(--muted)}
+.svc{display:grid;gap:4px;text-align:right}
+.svc b{font:800 1.9rem/1 var(--display);color:var(--svc)}
+.svc em{font:500 13px/1.2 var(--body);font-style:normal;color:var(--svc)}
+@media (max-width:480px){.case{grid-template-columns:minmax(0,1fr)}.svc{text-align:left}}
+.meta{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font:500 12px/1 var(--body);padding:6px 9px;border-radius:999px;background:var(--sunk);color:var(--muted)}
+.pill.ai{background:var(--pol-soft);color:var(--pol)}
+.meter{height:6px;background:var(--sunk);border-radius:3px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--svc,var(--muted));transition:width .4s}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:600px){.two{grid-template-columns:minmax(0,1fr)}}
+.box{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:10px;min-width:0}
+.loc{font:500 14px/1.5 var(--mono);font-variant-numeric:tabular-nums;word-break:break-all}
+a.lnk{color:var(--pol);font-weight:600}
+.report{font:13px/1.5 var(--mono);white-space:pre-wrap;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px;margin:0;max-height:180px;overflow:auto}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+ol.steps{margin:0;padding:0;list-style:none;display:grid;gap:8px;counter-reset:s}
+ol.steps li{counter-increment:s;display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;padding:10px;border-radius:8px;border:1px solid transparent}
+ol.steps li::before{content:counter(s);font:700 13px/28px var(--mono);text-align:center;width:28px;height:28px;border-radius:50%;background:var(--sunk);color:var(--muted)}
+ol.steps li.now{border-color:var(--svc);background:var(--surface)}
+ol.steps li.now::before{background:var(--svc);color:#fff}
+.log{margin:0;padding:0;list-style:none;display:grid;gap:4px;font:13px/1.45 var(--body)}
+.log li{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px}
+.log time{font-family:var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div style="display:grid;gap:8px">
+      <span class="tag">BPI-IA · Prototipo fase temprana</span>
+      <h1>Botón de Pánico Inteligente</h1>
+    </div>
+    <span class="demo">Demostración: no realiza llamadas reales</span>
+  </header>
+
+  <div class="grid">
+    <!-- Captura -->
+    <section class="panel" aria-label="Activar alerta">
+      <div class="field">
+        <label for="desc">¿Qué está pasando?</label>
+        <textarea id="desc" placeholder="Describe la emergencia en pocas palabras">Mi papá se desmayó en la sala y no responde</textarea>
+        <div class="chips" id="chips"></div>
+      </div>
+
+      <div class="field">
+        <span class="lbl">Ubicación (GPS simulado)</span>
+        <div class="coords">
+          <input id="lat" aria-label="Latitud" value="20.967370" inputmode="decimal">
+          <input id="lng" aria-label="Longitud" value="-89.623710" inputmode="decimal">
+        </div>
+        <input id="ref" aria-label="Referencia" value="Plaza Grande, Centro, Mérida, Yuc.">
+      </div>
+
+      <div class="btn-zone">
+        <button class="panic" id="panic" aria-describedby="hint">
+          <svg class="ring" viewBox="0 0 220 220" aria-hidden="true"><circle cx="110" cy="110" r="106" id="ringc"/></svg>
+          <span>SOS</span><small>Mantén presionado</small>
+        </button>
+        <p class="hint" id="hint">Mantén presionado 1.5 segundos para activar. Así se evitan alertas por toques accidentales.</p>
+        <button class="ghost" id="cancel" disabled>Cancelar: fue una falsa alarma</button>
+      </div>
+    </section>
+
+    <!-- Ficha del incidente -->
+    <section class="panel" aria-live="polite" aria-label="Incidente">
+      <div class="status">
+        <span class="state" id="state">Ejemplo precargado</span>
+        <span class="clock" id="clock">00:00</span>
+      </div>
+
+      <div class="case" id="case">
+        <div>
+          <h2 id="type">—</h2>
+          <p id="summary">—</p>
+        </div>
+        <div class="svc"><b id="svcNum">911</b><em id="svcName">—</em></div>
+      </div>
+      <div class="field">
+        <div class="row" style="justify-content:space-between">
+          <span class="lbl">Confianza de la clasificación</span>
+          <span class="meta"><span class="pill" id="src">Reglas locales</span><span class="pill" id="conf">—</span></span>
+        </div>
+        <div class="meter"><i id="meter" style="width:0"></i></div>
+      </div>
+
+      <div class="two">
+        <div class="box">
+          <span class="lbl">Ubicación enviada</span>
+          <div class="loc" id="locTxt">—</div>
+          <a class="lnk" id="maps" href="#" target="_blank" rel="noopener">Abrir en Google Maps ↗</a>
+        </div>
+        <div class="box">
+          <span class="lbl">Reporte para el operador</span>
+          <pre class="report" id="report">—</pre>
+          <div class="row"><button class="ghost" id="copy">Copiar reporte</button><span class="note" id="copyMsg"></span></div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="row" style="justify-content:space-between">
+          <span class="lbl">Instrucciones mientras llega la ayuda</span>
+          <div class="row">
+            <button class="ghost" id="speak">▶ Leer en voz alta</button>
+            <button class="ghost" id="stop" hidden>■ Detener</button>
+          </div>
+        </div>
+        <ol class="steps" id="steps"></ol>
+        <p class="note">Guía básica de primeros auxilios. No sustituye las indicaciones del operador de 911.</p>
+      </div>
+
+      <div class="field">
+        <span class="lbl">Bitácora del incidente</span>
+        <ul class="log" id="log"></ul>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+/* Catálogo de emergencias. En México el 911 es el número único; el sistema canaliza a la corporación. */
+const TYPES = {
+  inconsciente:{name:"Persona inconsciente", svc:"Ambulancia · Cruz Roja / SAMU", color:"--med",
+    kw:["desmay","inconsciente","no responde","no respira","convuls","infarto","paro","dolor de pecho","se cayó y no"],
+    steps:["Revisa que el lugar sea seguro para ti antes de acercarte.","Háblale fuerte y toca sus hombros para ver si responde.","Observa si respira: mira el pecho durante 10 segundos.","Si respira, acuéstala de lado en posición de seguridad y no le des nada de beber.","Si no respira, inicia compresiones en el centro del pecho: fuerte y rápido, de 100 a 120 por minuto.","No te detengas hasta que llegue la ambulancia o la persona reaccione."]},
+  sangrado:{name:"Herida con sangrado", svc:"Ambulancia · Cruz Roja / SAMU", color:"--med",
+    kw:["sangr","herida","cortad","apuñal","navaja","mordid"],
+    steps:["Protégete las manos si tienes guantes o una bolsa de plástico.","Presiona la herida directamente con una tela limpia.","Mantén la presión firme y continua, sin retirar la tela.","Si la tela se empapa, pon otra encima y sigue presionando.","Mantén a la persona acostada y abrigada mientras llega la ayuda."]},
+  atragantamiento:{name:"Atragantamiento", svc:"Ambulancia · Cruz Roja / SAMU", color:"--med",
+    kw:["atragant","se ahoga","no puede respirar","asfix","comida atorada"],
+    steps:["Pregúntale si puede toser o hablar. Si tose, anímala a seguir tosiendo.","Si no puede toser ni hablar, colócate detrás de ella.","Pon el puño arriba del ombligo y cúbrelo con tu otra mano.","Da compresiones rápidas hacia adentro y hacia arriba hasta que expulse el objeto.","Si pierde el conocimiento, acuéstala y comienza compresiones en el pecho."]},
+  incendio:{name:"Incendio", svc:"Bomberos · Protección Civil", color:"--fire",
+    kw:["fuego","incend","humo","se quema","flama","explos","gas","huele a gas"],
+    steps:["Sal del lugar de inmediato y avisa a los demás.","Si hay humo, avanza agachado, cerca del piso.","Cierra las puertas detrás de ti para frenar el fuego.","No uses elevadores y no regreses por objetos.","Si tu ropa se incendia: detente, tírate al suelo y rueda.","Espera a los bomberos en un punto seguro y lejos del inmueble."]},
+  accidente:{name:"Accidente vial", svc:"Ambulancia + Policía Vial", color:"--fire",
+    kw:["choque","chocaron","atropell","accidente","volcad","carro","moto","carretera"],
+    steps:["Pon las luces intermitentes y colócate en un lugar seguro, fuera del camino.","No muevas a los heridos, salvo que haya fuego o peligro inmediato.","Si algún vehículo humea, apaga el motor solo si es seguro hacerlo.","Si alguien sangra, presiona la herida con una tela limpia.","Habla con los heridos y mantenlos quietos hasta que llegue la ayuda."]},
+  seguridad:{name:"Riesgo a la seguridad", svc:"Policía · Seguridad Pública", color:"--pol",
+    kw:["robo","asalt","me siguen","siguiendo","arma","pistola","agred","golpe","secuestr","amenaz","violencia","entraron"],
+    steps:["Aléjate y busca un lugar iluminado y con gente.","No confrontes al agresor ni intentes detenerlo.","Si puedes, mantén la llamada abierta aunque no hables.","Fíjate en rasgos, ropa, vehículo y placas para describirlos.","Espera a la patrulla en un sitio seguro."]},
+  general:{name:"Emergencia no especificada", svc:"Operador 911 · triage", color:"--pol",
+    kw:[],
+    steps:["Mantén la calma y ponte en un lugar seguro.","Responde las preguntas del operador de 911 con frases cortas.","Quédate en la ubicación enviada, salvo que sea peligroso.","Mantén tu teléfono con batería y la línea libre."]}
+};
+
+const SAMPLES = ["Mi papá se desmayó en la sala y no responde","Sale humo de la cocina del vecino","Un señor se está atragantando en el restaurante","Choque en la carretera, hay heridos","Me vienen siguiendo dos personas"];
+SAMPLES.forEach(s=>{const b=document.createElement("button");b.className="chip";b.type="button";b.textContent=s;b.onclick=()=>{$("desc").value=s};$("chips").append(b)});
+
+/* Clasificador local por palabras clave (respaldo sin conexión) */
+function localClassify(text){
+  const t=text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+  let best="general",score=0;
+  for(const [id,ty] of Object.entries(TYPES)){
+    const s=ty.kw.reduce((n,k)=>n+(t.includes(k.normalize("NFD").replace(/[̀-ͯ]/g,""))?1:0),0);
+    if(s>score){score=s;best=id}
+  }
+  const conf=score===0?0.4:Math.min(0.92,0.62+score*0.12);
+  return {tipo:best,confianza:conf,resumen:text.trim()||"Sin descripción"};
+}
+
+/* Clasificación con IA (Claude) cuando está disponible */
+let samplePromise=null;
+try{ samplePromise = window.claude ? window.claude.use("sample") : null }catch(e){ samplePromise=null }
+async function aiClassify(text){
+  const sample = samplePromise ? await samplePromise : null;
+  if(!sample) return null;
+  const prompt = `Eres el clasificador de un botón de pánico en México. Clasifica la emergencia descrita.
+Tipos válidos: ${Object.keys(TYPES).join(", ")}.
+- inconsciente: desmayo, no responde, no respira, convulsión, dolor de pecho
+- sangrado: heridas con sangre
+- atragantamiento: no puede respirar por un objeto o comida
+- incendio: fuego, humo, fuga de gas, explosión
+- accidente: choques, atropellamientos, volcaduras
+- seguridad: robo, agresión, persecución, armas, amenazas
+- general: cualquier otra cosa o información insuficiente
+Responde solo JSON: {"tipo":"<tipo>","confianza":<0 a 1>,"resumen":"<máx 12 palabras para el operador>"}
+
+Descripción: """${text.slice(0,600)}"""`;
+  try{
+    const r = await sample.json(prompt,{modelTier:"quick"});
+    if(r && TYPES[r.tipo]) return {tipo:r.tipo,confianza:Math.max(0,Math.min(1,Number(r.confianza)||0.7)),resumen:String(r.resumen||text).slice(0,140)};
+  }catch(e){ /* sin permiso o sin servicio: se usa el respaldo local */ }
+  return null;
+}
+
+/* Estado */
+let t0=0,timer=null,current=null,running=false;
+const fmt=ms=>{const s=Math.floor(ms/1000);return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0")};
+function log(msg){const li=document.createElement("li");li.innerHTML=`<time>${running?fmt(Date.now()-t0):"--:--"}</time><span></span>`;li.lastChild.textContent=msg;$("log").append(li)}
+
+function render(res,source){
+  const ty=TYPES[res.tipo]; current={...res,ty};
+  $("case").style.setProperty("--svc",`var(${ty.color})`);
+  document.querySelector(".meter").style.setProperty("--svc",`var(${ty.color})`);
+  $("steps").style.setProperty("--svc",`var(${ty.color})`);
+  $("type").textContent=ty.name;
+  $("summary").textContent=res.resumen;
+  $("svcName").textContent=ty.svc;
+  $("conf").textContent=Math.round(res.confianza*100)+" %";
+  $("meter").style.width=Math.round(res.confianza*100)+"%";
+  $("src").textContent=source==="ai"?"Clasificado con IA":"Reglas locales";
+  $("src").className="pill"+(source==="ai"?" ai":"");
+  const lat=parseFloat($("lat").value), lng=parseFloat($("lng").value);
+  const ok=isFinite(lat)&&isFinite(lng);
+  $("locTxt").textContent= ok ? `${lat.toFixed(6)}, ${lng.toFixed(6)}\n${$("ref").value}` : "Coordenadas no válidas";
+  $("maps").href= ok ? `https://www.google.com/maps?q=${lat},${lng}` : "https://www.google.com/maps";
+  const hora=new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+  $("report").textContent=
+`ALERTA BPI-IA · ${hora}
+Tipo: ${ty.name}
+Canalizar a: ${ty.svc}
+Resumen: ${res.resumen}
+Ubicación: ${ok?lat.toFixed(6)+", "+lng.toFixed(6):"sin dato"}
+Referencia: ${$("ref").value}
+Mapa: ${ok?"https://www.google.com/maps?q="+lat+","+lng:"—"}`;
+  $("steps").innerHTML="";
+  ty.steps.forEach(s=>{const li=document.createElement("li");const sp=document.createElement("span");sp.textContent=s;li.append(sp);$("steps").append(li)});
+}
+
+async function activate(){
+  if(running) return;
+  stopSpeech();
+  running=true; t0=Date.now(); $("log").innerHTML="";
+  $("state").textContent="Alerta activa"; $("state").className="state live";
+  $("cancel").disabled=false;
+  timer=setInterval(()=>$("clock").textContent=fmt(Date.now()-t0),250);
+  const text=$("desc").value;
+  log("Botón activado. Descripción recibida.");
+  log("Ubicación capturada: "+$("lat").value+", "+$("lng").value);
+  const local=localClassify(text);
+  render(local,"local");
+  $("src").textContent="Analizando con IA…";
+  const ai=await aiClassify(text);
+  if(!running) return;
+  if(ai){render(ai,"ai");log("IA clasificó: "+TYPES[ai.tipo].name+" ("+Math.round(ai.confianza*100)+" %)")}
+  else{$("src").textContent="Reglas locales";log("Clasificación con reglas locales: "+TYPES[local.tipo].name)}
+  log("Llamada simulada a 911 → "+current.ty.svc);
+  log("Reporte y enlace de ubicación enviados al operador.");
+  setTimeout(()=>{ if(!running) return; log("Instrucciones de primeros auxilios listas."); $("state").textContent="Ayuda en camino"; $("state").className="state done"; },900);
+}
+
+function cancel(){
+  if(!running) return;
+  log("Alerta cancelada por el usuario: falsa alarma.");
+  running=false; clearInterval(timer); stopSpeech();
+  $("state").textContent="Cancelada"; $("state").className="state";
+  $("cancel").disabled=true;
+}
+
+/* Mantener presionado */
+const HOLD=1500; let holdStart=0,raf=0;
+const ring=$("ringc");
+function startHold(e){ if(e) e.preventDefault(); if(running||holdStart) return; holdStart=performance.now(); $("panic").classList.add("holding"); tick() }
+function tick(){ const p=Math.min(1,(performance.now()-holdStart)/HOLD); ring.style.strokeDashoffset=666*(1-p); if(p>=1){endHold(true);return} raf=requestAnimationFrame(tick) }
+function endHold(fired){ cancelAnimationFrame(raf); holdStart=0; $("panic").classList.remove("holding"); ring.style.strokeDashoffset=666; if(fired===true) activate() }
+$("panic").addEventListener("pointerdown",startHold);
+["pointerup","pointerleave","pointercancel"].forEach(ev=>$("panic").addEventListener(ev,()=>{ if(holdStart) endHold(false) }));
+$("panic").addEventListener("keydown",e=>{ if((e.key===" "||e.key==="Enter")&&!e.repeat) startHold(e) });
+$("panic").addEventListener("keyup",e=>{ if(e.key===" "||e.key==="Enter"){ if(holdStart) endHold(false) } });
+$("panic").addEventListener("click",e=>e.preventDefault());
+$("cancel").onclick=cancel;
+
+/* Voz */
+const synth=window.speechSynthesis;
+function stopSpeech(){ try{synth&&synth.cancel()}catch(e){} $("stop").hidden=true; $("speak").hidden=false; document.querySelectorAll("#steps li").forEach(l=>l.classList.remove("now")) }
+$("speak").onclick=()=>{
+  if(!synth||!current){ $("speak").textContent="Voz no disponible en este navegador"; $("speak").disabled=true; return }
+  stopSpeech();
+  const voices=synth.getVoices(); const v=voices.find(x=>/es[-_]MX/i.test(x.lang))||voices.find(x=>/^es/i.test(x.lang));
+  const items=[...document.querySelectorAll("#steps li")];
+  $("speak").hidden=true; $("stop").hidden=false;
+  const intro=new SpeechSynthesisUtterance(`${current.ty.name}. La ayuda va en camino. Sigue estas instrucciones.`);
+  intro.lang="es-MX"; if(v) intro.voice=v; synth.speak(intro);
+  current.ty.steps.forEach((s,i)=>{
+    const u=new SpeechSynthesisUtterance(`Paso ${i+1}. ${s}`); u.lang="es-MX"; if(v) u.voice=v; u.rate=0.95;
+    u.onstart=()=>{items.forEach(l=>l.classList.remove("now")); items[i]&&items[i].classList.add("now")};
+    if(i===current.ty.steps.length-1) u.onend=()=>stopSpeech();
+    synth.speak(u);
+  });
+  if(running) log("Lectura de instrucciones por voz iniciada.");
+};
+$("stop").onclick=stopSpeech;
+
+/* Copiar reporte */
+$("copy").onclick=()=>{
+  const txt=$("report").textContent;
+  const fallback=()=>{const r=document.createRange();r.selectNodeContents($("report"));const s=getSelection();s.removeAllRanges();s.addRange(r);$("copyMsg").textContent="Texto seleccionado: cópialo con Ctrl+C"};
+  try{ navigator.clipboard.writeText(txt).then(()=>$("copyMsg").textContent="Copiado",fallback) }catch(e){ fallback() }
+};
+
+/* Ejemplo precargado al abrir */
+render(localClassify($("desc").value),"local");
+[["00:00","Botón activado. Descripción recibida."],["00:00","Ubicación capturada: 20.967370, -89.623710"],["00:01","Clasificación: Persona inconsciente"],["00:01","Llamada simulada a 911 → Ambulancia · Cruz Roja / SAMU"],["00:02","Reporte y enlace de ubicación enviados al operador."]]
+ .forEach(([t,m])=>{const li=document.createElement("li");li.innerHTML=`<time>${t}</time><span></span>`;li.lastChild.textContent=m;$("log").append(li)});
+$("clock").textContent="00:02";
+</script>
+
+</body>
+</html>
